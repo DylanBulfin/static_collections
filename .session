@@ -13,22 +13,17 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +4 src/lib.rs
+badd +12 src/lib.rs
 badd +1 Cargo.toml
 badd +1 src/list.rs
-badd +312 src/searchable_list.rs
+badd +484 src/searchable_list.rs
+badd +1 src/stack.rs
+badd +4 src/queue.rs
 argglobal
 %argdel
-edit src/searchable_list.rs
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
+edit src/lib.rs
 argglobal
-balt src/lib.rs
+balt src/queue.rs
 setlocal foldmethod=manual
 setlocal foldexpr=0
 setlocal foldmarker={{{,}}}
@@ -39,12 +34,12 @@ setlocal foldnestmax=20
 setlocal foldenable
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 314 - ((45 * winheight(0) + 26) / 53)
+let s:l = 12 - ((11 * winheight(0) + 26) / 53)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 314
-normal! 035|
+keepjumps 12
+normal! 021|
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf
@@ -52,8 +47,6 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
-let &winminheight = s:save_winminheight
-let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)

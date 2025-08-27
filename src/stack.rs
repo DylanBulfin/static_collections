@@ -42,6 +42,13 @@ impl<T, const N: usize> Stack<T, N> {
         self.arr = [const { None }; N];
         self.len = 0;
     }
+
+    pub fn iter(&self) -> StackIter<'_, T, N> {
+        StackIter {
+            base: &self,
+            index: 0,
+        }
+    }
 }
 
 impl<T, const N: usize> Index<usize> for Stack<T, N> {
@@ -197,6 +204,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Attempt to add value to full stack")]
+    fn test_push_full_panic() {
+        let mut stack: Stack<u32, 10> = stack![1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+        stack.push(10);
+    }
+
+    #[test]
     fn test_pop() {
         let mut stack: Stack<u32, 10> = stack![1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
         let mut exp_arr = stack.arr.clone();
@@ -279,4 +293,21 @@ mod tests {
         assert_eq!(stack.arr, exp_arr);
         assert_eq!(stack.len, exp_len);
     }
+
+    #[test]
+    fn test_index() {
+        let stack: Stack<u32, 10> = stack![9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+        for i in 0..10 {
+            assert_eq!(i, stack[i] as usize);
+        }
+    }
+
+    #[test]
+    fn test_iter() {
+        let stack: Stack<u32, 10> = stack![9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+        for (i, n) in stack.iter().enumerate() {
+            assert_eq!(i, *n as usize);
+        }
+    }
 }
+
