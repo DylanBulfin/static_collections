@@ -1,4 +1,4 @@
-use core::{cmp::Ordering, marker::PhantomData, ops::Index};
+use core::{cmp::Ordering, ops::Index};
 
 /// This module provides a list type that can be searched and indexed efficiently (O(1)). It
 /// potentially involves restructuring the backing array when a
@@ -71,8 +71,6 @@ where
         self.len += 1;
     }
 
-    pub fn remove_index()
-
     /// Pop an element from the **back** of the list
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
@@ -113,6 +111,53 @@ where
                 self.len - 1,
                 self.len
             );
+        }
+    }
+
+    pub fn find(&self, elem: &T) -> Option<usize> {
+        self.search_for_existing_spot_by(|el| el.cmp(elem), 0, self.len)
+    }
+
+    fn search_for_existing_spot_by<F>(&self, f: F, start_j: usize, end_j: usize) -> Option<usize>
+    where
+        F: Fn(&T) -> Ordering,
+    {
+        let diff = end_j - start_j;
+
+        if diff == 0 {
+            None
+        } else if diff == 1 {
+            if let Some((start_i, se)) = &self.backing[start_j]
+                && let Some((end_i, ee)) = &self.backing[end_j]
+            {
+                if f(se).is_eq() {
+                    Some(*start_i)
+                } else if f(ee).is_eq() {
+                    Some(*end_i)
+                } else {
+                    None
+                }
+            } else {
+                panic!(
+                    "Unexpected none at in index {} or {} in backing array",
+                    start_j, end_j
+                )
+            }
+        } else {
+            let midpoint = start_j + (diff / 2);
+
+            if let Some((midpoint_i, elem)) = &self.backing[midpoint] {
+                match f(elem) {
+                    Ordering::Equal => Some(*midpoint_i),
+                    Ordering::Less => self.search_for_existing_spot_by(f, midpoint, end_j),
+                    Ordering::Greater => self.search_for_existing_spot_by(f, start_j, midpoint),
+                }
+            } else {
+                panic!(
+                    "Unexpected None at index {} of backing array for searchable list with len {}",
+                    midpoint, self.len
+                );
+            }
         }
     }
 
@@ -171,6 +216,7 @@ where
         }
     }
 
+    #[cfg(test)]
     fn verify_invariates(&self) {
         if self.len > N {
             panic!("SList len {} is greater than max {}", self.len, N);
@@ -422,5 +468,19 @@ mod tests {
         assert_eq!(slist[3], 0);
 
         slist[4];
+    }
+
+    #[test]
+    fn test_find() {
+        let mut slist = SearchableList::<u32, 10>::new();
+        slist.push(1);
+        slist.push(3);
+        slist.push(2);
+        slist.push(0);
+
+        assert_eq!(slist.find(&0), Some(3));
+        assert_eq!(slist.find(&1), Some(0));
+        assert_eq!(slist.find(&2), Some(2));
+        assert_eq!(slist.find(&3), Some(1));
     }
 }
