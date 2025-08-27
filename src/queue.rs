@@ -7,7 +7,7 @@ pub struct Queue<T, const N: usize> {
 }
 
 impl<T, const N: usize> Queue<T, N> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             arr: [const { None }; N],
             index: 0,
