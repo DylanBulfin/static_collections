@@ -3,6 +3,7 @@ use core::{
     mem,
 };
 
+#[derive(Debug)]
 enum HashMapEntry<K, V>
 where
     K: Hash + Eq,
@@ -10,6 +11,25 @@ where
     Occupied(K, V),
     Empty,
     Deleted,
+}
+
+impl<K, V> PartialEq for HashMapEntry<K, V>
+where
+    K: Hash + Eq,
+    V: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Occupied(l0, l1), Self::Occupied(r0, r1)) => l0 == r0 && l1 == r1,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+impl<K, V> Eq for HashMapEntry<K, V>
+where
+    K: Hash + Eq,
+    V: Eq,
+{
 }
 
 impl<K, V> HashMapEntry<K, V>
@@ -187,6 +207,7 @@ macro_rules! map {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     struct IntHasher {
@@ -212,6 +233,25 @@ mod tests {
 
         fn build_hasher(&self) -> Self::Hasher {
             IntHasher { val: 0 }
+        }
+    }
+
+    // A type that always returns a hash of zero, to allow both testing hash collision logic and to
+    // directly test the contents of the backing structure in a reproducible way
+    struct IntCollHasher {}
+    impl Hasher for IntCollHasher {
+        fn finish(&self) -> u64 {
+            0
+        }
+
+        fn write(&mut self, _bytes: &[u8]) {}
+    }
+    struct IntCollBuildHasher {}
+    impl BuildHasher for IntCollBuildHasher {
+        type Hasher = IntCollHasher;
+
+        fn build_hasher(&self) -> Self::Hasher {
+            IntCollHasher {}
         }
     }
 
@@ -258,5 +298,122 @@ mod tests {
         assert!(!map.contains_key(&5));
 
         assert_eq!(map.len, 4);
+    }
+
+    #[test]
+    fn test_remove() {
+        let bh = IntBuildHasher {};
+        let mut map: HashMap<_, _, _, 50> = map!(bh => (1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
+
+        assert_eq!(map.remove(&1), Some(1.0));
+        assert_eq!(map.len, 3);
+        assert!(!map.contains_key(&1));
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.remove(&1), None);
+
+        assert_eq!(map.remove(&2), Some(2.0));
+        assert_eq!(map.len, 2);
+        assert!(!map.contains_key(&2));
+        assert_eq!(map.get(&2), None);
+        assert_eq!(map.remove(&2), None);
+
+        assert_eq!(map.remove(&3), Some(3.0));
+        assert_eq!(map.len, 1);
+        assert!(!map.contains_key(&3));
+        assert_eq!(map.get(&3), None);
+        assert_eq!(map.remove(&3), None);
+
+        assert_eq!(map.remove(&4), Some(4.0));
+        assert_eq!(map.len, 0);
+        assert!(!map.contains_key(&4));
+        assert_eq!(map.get(&4), None);
+        assert_eq!(map.remove(&4), None);
+    }
+
+    #[test]
+    fn test_collisions() {
+        let bh = IntCollBuildHasher {};
+        let mut map: HashMap<_, _, _, 50> = map![bh => ];
+
+        map.insert(1, 1.0);
+        map.insert(2, 2.0);
+        map.insert(3, 3.0);
+        map.insert(4, 4.0);
+
+        assert_eq!(map.entries[0], HashMapEntry::Occupied(1, 1.0));
+        assert_eq!(map.entries[1], HashMapEntry::Occupied(2, 2.0));
+        assert_eq!(map.entries[2], HashMapEntry::Occupied(3, 3.0));
+        assert_eq!(map.entries[3], HashMapEntry::Occupied(4, 4.0));
+
+        assert!(map.contains_key(&1));
+        assert!(map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+
+        assert_eq!(map.len, 4);
+
+        assert_eq!(map.get(&1), Some(&1.0));
+        assert_eq!(map.get(&2), Some(&2.0));
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+
+        assert_eq!(map.remove(&2), Some(2.0));
+
+        assert_eq!(map.entries[0], HashMapEntry::Occupied(1, 1.0));
+        assert_eq!(map.entries[1], HashMapEntry::Deleted);
+        assert_eq!(map.entries[2], HashMapEntry::Occupied(3, 3.0));
+        assert_eq!(map.entries[3], HashMapEntry::Occupied(4, 4.0));
+
+        assert!(map.contains_key(&1));
+        assert!(!map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+
+        assert_eq!(map.len, 3);
+
+        assert_eq!(map.get(&1), Some(&1.0));
+        assert_eq!(map.get(&2), None);
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+
+        assert_eq!(map.remove(&1), Some(1.0));
+
+        assert_eq!(map.entries[0], HashMapEntry::Deleted);
+        assert_eq!(map.entries[1], HashMapEntry::Deleted);
+        assert_eq!(map.entries[2], HashMapEntry::Occupied(3, 3.0));
+        assert_eq!(map.entries[3], HashMapEntry::Occupied(4, 4.0));
+
+        assert!(!map.contains_key(&1));
+        assert!(!map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+
+        assert_eq!(map.len, 2);
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), None);
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+
+        assert!(map.insert(5, 5.0));
+
+        assert_eq!(map.entries[0], HashMapEntry::Occupied(5, 5.0));
+        assert_eq!(map.entries[1], HashMapEntry::Deleted);
+        assert_eq!(map.entries[2], HashMapEntry::Occupied(3, 3.0));
+        assert_eq!(map.entries[3], HashMapEntry::Occupied(4, 4.0));
+
+        assert!(!map.contains_key(&1));
+        assert!(!map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+        assert!(map.contains_key(&5));
+
+        assert_eq!(map.len, 3);
+
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&2), None);
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+        assert_eq!(map.get(&5), Some(&5.0));
     }
 }
