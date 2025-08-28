@@ -1,13 +1,15 @@
 #![no_std]
 
-mod hashset;
+mod hash_map;
+mod hash_set;
 mod list;
 mod queue;
 mod searchable_list;
 mod stack;
 
 // Re-exports
-pub use hashset::HashSet;
+pub use hash_map::HashMap;
+pub use hash_set::HashSet;
 pub use list::List;
 pub use queue::Queue;
 pub use searchable_list::SearchableList;

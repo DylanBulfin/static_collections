@@ -1,0 +1,262 @@
+use core::{
+    hash::{BuildHasher, Hash, Hasher},
+    mem,
+};
+
+enum HashMapEntry<K, V>
+where
+    K: Hash + Eq,
+{
+    Occupied(K, V),
+    Empty,
+    Deleted,
+}
+
+impl<K, V> HashMapEntry<K, V>
+where
+    K: Hash + Eq,
+{
+    pub fn take(&mut self) -> Self {
+        mem::replace(self, HashMapEntry::Deleted)
+    }
+
+    pub fn as_ref(&self) -> HashMapEntry<&K, &V> {
+        match &self {
+            HashMapEntry::Occupied(k, v) => HashMapEntry::Occupied(k, v),
+            HashMapEntry::Empty => HashMapEntry::Empty,
+            HashMapEntry::Deleted => HashMapEntry::Deleted,
+        }
+    }
+}
+
+impl<K, V> From<HashMapEntry<K, V>> for Option<V>
+where
+    K: Hash + Eq,
+{
+    fn from(value: HashMapEntry<K, V>) -> Self {
+        match value {
+            HashMapEntry::Occupied(_, v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+impl<K, V> From<HashMapEntry<K, V>> for Option<(K, V)>
+where
+    K: Hash + Eq,
+{
+    fn from(value: HashMapEntry<K, V>) -> Self {
+        match value {
+            HashMapEntry::Occupied(k, v) => Some((k, v)),
+            _ => None,
+        }
+    }
+}
+
+pub struct HashMap<K, V, H, const N: usize>
+where
+    K: Hash + Eq,
+    H: BuildHasher,
+{
+    build_hasher: H,
+    entries: [HashMapEntry<K, V>; N],
+    len: usize,
+}
+
+impl<K, V, H, const N: usize> HashMap<K, V, H, N>
+where
+    K: Hash + Eq,
+    H: BuildHasher,
+{
+    pub fn new_with_hasher(hasher: H) -> Self {
+        Self {
+            entries: [const { HashMapEntry::Empty }; N],
+            len: 0,
+            build_hasher: hasher,
+        }
+    }
+
+    pub fn insert(&mut self, key: K, val: V) -> bool {
+        if let Some(spot) = self.probe_for_available_spot(&key) {
+            self.entries[spot] = HashMapEntry::Occupied(key, val);
+            self.len += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let spot = self.probe_for_existing_spot(key)?;
+
+        self.len -= 1;
+        self.entries[spot].take().into()
+    }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.probe_for_existing_spot(key).is_some()
+    }
+
+    pub fn get(&self, key: &'_ K) -> Option<&V> {
+        let spot = self.probe_for_existing_spot(key)?;
+
+        self.entries[spot].as_ref().into()
+    }
+
+    fn hash_key(&self, key: &K) -> u64 {
+        let mut hasher = self.build_hasher.build_hasher();
+        key.hash(&mut hasher);
+
+        hasher.finish()
+    }
+
+    fn probe_for_available_spot(&self, key: &K) -> Option<usize> {
+        if self.len >= N {
+            return None;
+        }
+
+        let hash = self.hash_key(key);
+        let mut spot = hash as usize % N;
+        let original_spot = spot;
+
+        loop {
+            match &self.entries[spot] {
+                HashMapEntry::Empty | HashMapEntry::Deleted => {
+                    return Some(spot);
+                }
+                HashMapEntry::Occupied(k, _) => {
+                    if k == key {
+                        return None;
+                    }
+                    spot = (spot + 1) % N;
+                }
+            }
+
+            if spot == original_spot {
+                panic!("Unable to find free spot in HashMap with len < N")
+            }
+        }
+    }
+
+    fn probe_for_existing_spot(&self, key: &K) -> Option<usize> {
+        if self.len == 0 {
+            return None;
+        }
+
+        let hash = self.hash_key(key);
+        let mut spot = hash as usize % N;
+        let original_spot = spot;
+
+        loop {
+            match &self.entries[spot] {
+                HashMapEntry::Empty => {
+                    return None;
+                }
+                HashMapEntry::Deleted => {
+                    spot = (spot + 1) % N;
+                }
+                HashMapEntry::Occupied(k, _) => {
+                    if k == key {
+                        return Some(spot);
+                    } else {
+                        spot = (spot + 1) % N
+                    }
+                }
+            }
+
+            if spot == original_spot {
+                return None;
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! map {
+    [$h:expr => $(($key:expr, $value:expr)),*] => {{
+        #[allow(unused_mut)]
+        let mut map = $crate::HashMap::new_with_hasher($h);
+        $(map.insert($key, $value);)*
+        map
+    }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct IntHasher {
+        val: u64,
+    }
+
+    impl Hasher for IntHasher {
+        fn finish(&self) -> u64 {
+            self.val
+        }
+
+        fn write(&mut self, bytes: &[u8]) {
+            for byte in bytes {
+                self.val += *byte as u64;
+            }
+        }
+    }
+
+    struct IntBuildHasher {}
+
+    impl BuildHasher for IntBuildHasher {
+        type Hasher = IntHasher;
+
+        fn build_hasher(&self) -> Self::Hasher {
+            IntHasher { val: 0 }
+        }
+    }
+
+    #[test]
+    fn test_insert_contains() {
+        let bh = IntBuildHasher {};
+        let mut map: HashMap<u32, f64, _, 50> = HashMap::new_with_hasher(bh);
+
+        map.insert(1, 1.0);
+        map.insert(2, 2.0);
+        map.insert(3, 3.0);
+        map.insert(4, 4.0);
+
+        assert_eq!(map.get(&1), Some(&1.0));
+        assert_eq!(map.get(&2), Some(&2.0));
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+
+        assert!(map.contains_key(&1));
+        assert!(map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+
+        assert!(!map.contains_key(&5));
+
+        assert_eq!(map.len, 4);
+    }
+
+    #[test]
+    fn test_map_macro() {
+        let bh = IntBuildHasher {};
+        let map: HashMap<_, _, _, 50> = map!(bh => (1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
+
+        assert_eq!(map.get(&1), Some(&1.0));
+        assert_eq!(map.get(&2), Some(&2.0));
+        assert_eq!(map.get(&3), Some(&3.0));
+        assert_eq!(map.get(&4), Some(&4.0));
+
+        assert!(map.contains_key(&1));
+        assert!(map.contains_key(&2));
+        assert!(map.contains_key(&3));
+        assert!(map.contains_key(&4));
+
+        assert!(!map.contains_key(&5));
+
+        assert_eq!(map.len, 4);
+    }
+}

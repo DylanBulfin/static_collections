@@ -1,5 +1,4 @@
 use core::{
-    cell::RefCell,
     hash::{BuildHasher, Hash, Hasher},
     mem,
 };
@@ -67,7 +66,7 @@ where
     T: Hash + Eq,
     H: BuildHasher,
 {
-    pub const fn new_with_hasher(hasher: H) -> Self {
+    pub fn new_with_hasher(hasher: H) -> Self {
         Self {
             arr: [const { HashSetEntry::Empty }; N],
             len: 0,
@@ -188,7 +187,7 @@ macro_rules! set {
 mod tests {
     use core::hash::{BuildHasher, Hasher};
 
-    use crate::{HashSet, hashset::HashSetEntry};
+    use crate::{HashSet, hash_set::HashSetEntry};
 
     struct IntHasher {
         val: u64,
