@@ -3,6 +3,8 @@ use core::{
     mem,
 };
 
+use crate::hasher::BuildDefaultHasher;
+
 #[derive(Debug)]
 enum HashMapEntry<K, V>
 where
@@ -73,7 +75,7 @@ where
     }
 }
 
-pub struct HashMap<K, V, H, const N: usize>
+pub struct HashMap<K, V, const N: usize, H = BuildDefaultHasher>
 where
     K: Hash + Eq,
     H: BuildHasher,
@@ -83,7 +85,20 @@ where
     len: usize,
 }
 
-impl<K, V, H, const N: usize> HashMap<K, V, H, N>
+impl<K, V, const N: usize> HashMap<K, V, N>
+where
+    K: Hash + Eq,
+{
+    pub fn new() -> Self {
+        Self {
+            entries: [const { HashMapEntry::Empty }; N],
+            len: 0,
+            build_hasher: BuildDefaultHasher {},
+        }
+    }
+}
+
+impl<K, V, const N: usize, H> HashMap<K, V, N, H>
 where
     K: Hash + Eq,
     H: BuildHasher,
@@ -197,9 +212,9 @@ where
 
 #[macro_export]
 macro_rules! map {
-    [$h:expr => $(($key:expr, $value:expr)),*] => {{
+    [$(($key:expr, $value:expr)),*] => {{
         #[allow(unused_mut)]
-        let mut map = $crate::HashMap::new_with_hasher($h);
+        let mut map = $crate::HashMap::new();
         $(map.insert($key, $value);)*
         map
     }};
@@ -209,32 +224,6 @@ macro_rules! map {
 mod tests {
 
     use super::*;
-
-    struct IntHasher {
-        val: u64,
-    }
-
-    impl Hasher for IntHasher {
-        fn finish(&self) -> u64 {
-            self.val
-        }
-
-        fn write(&mut self, bytes: &[u8]) {
-            for byte in bytes {
-                self.val += *byte as u64;
-            }
-        }
-    }
-
-    struct IntBuildHasher {}
-
-    impl BuildHasher for IntBuildHasher {
-        type Hasher = IntHasher;
-
-        fn build_hasher(&self) -> Self::Hasher {
-            IntHasher { val: 0 }
-        }
-    }
 
     // A type that always returns a hash of zero, to allow both testing hash collision logic and to
     // directly test the contents of the backing structure in a reproducible way
@@ -257,8 +246,7 @@ mod tests {
 
     #[test]
     fn test_insert_contains() {
-        let bh = IntBuildHasher {};
-        let mut map: HashMap<u32, f64, _, 50> = HashMap::new_with_hasher(bh);
+        let mut map: HashMap<u32, f64, 50> = HashMap::new();
 
         map.insert(1, 1.0);
         map.insert(2, 2.0);
@@ -282,8 +270,7 @@ mod tests {
 
     #[test]
     fn test_map_macro() {
-        let bh = IntBuildHasher {};
-        let map: HashMap<_, _, _, 50> = map!(bh => (1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
+        let map: HashMap<_, _, 50> = map!((1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
 
         assert_eq!(map.get(&1), Some(&1.0));
         assert_eq!(map.get(&2), Some(&2.0));
@@ -302,8 +289,7 @@ mod tests {
 
     #[test]
     fn test_remove() {
-        let bh = IntBuildHasher {};
-        let mut map: HashMap<_, _, _, 50> = map!(bh => (1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
+        let mut map: HashMap<_, _, 50> = map!((1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0));
 
         assert_eq!(map.remove(&1), Some(1.0));
         assert_eq!(map.len, 3);
@@ -333,7 +319,7 @@ mod tests {
     #[test]
     fn test_collisions() {
         let bh = IntCollBuildHasher {};
-        let mut map: HashMap<_, _, _, 50> = map![bh => ];
+        let mut map: HashMap<_, _, 50, _> = HashMap::new_with_hasher(bh);
 
         map.insert(1, 1.0);
         map.insert(2, 2.0);

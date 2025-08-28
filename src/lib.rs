@@ -2,6 +2,7 @@
 
 mod hash_map;
 mod hash_set;
+mod hasher;
 mod list;
 mod queue;
 mod searchable_list;

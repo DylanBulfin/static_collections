@@ -3,6 +3,8 @@ use core::{
     mem,
 };
 
+use crate::hasher::BuildDefaultHasher;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HashSetEntry<T>
 where
@@ -52,7 +54,7 @@ where
     }
 }
 
-pub struct HashSet<T, H, const N: usize>
+pub struct HashSet<T, const N: usize, H = BuildDefaultHasher>
 where
     T: Hash + Eq,
     H: BuildHasher,
@@ -62,7 +64,20 @@ where
     hasher: H,
 }
 
-impl<T, H, const N: usize> HashSet<T, H, N>
+impl<T, const N: usize> HashSet<T, N>
+where
+    T: Hash + Eq,
+{
+    pub const fn new() -> Self {
+        Self {
+            arr: [const { HashSetEntry::Empty }; N],
+            len: 0,
+            hasher: BuildDefaultHasher {},
+        }
+    }
+}
+
+impl<T, const N: usize, H> HashSet<T, N, H>
 where
     T: Hash + Eq,
     H: BuildHasher,
@@ -176,9 +191,9 @@ where
 
 #[macro_export]
 macro_rules! set {
-    [$h:expr => $($elem:expr),*] => {{
+    [$($elem:expr),*] => {{
         #[allow(unused_mut)]
-        let mut set = $crate::HashSet::new_with_hasher($h);
+        let mut set = $crate::HashSet::new();
         $(set.insert($elem);)*
         set
     }};
@@ -189,32 +204,6 @@ mod tests {
     use core::hash::{BuildHasher, Hasher};
 
     use crate::{HashSet, hash_set::HashSetEntry};
-
-    struct IntHasher {
-        val: u64,
-    }
-
-    impl Hasher for IntHasher {
-        fn finish(&self) -> u64 {
-            self.val
-        }
-
-        fn write(&mut self, bytes: &[u8]) {
-            for byte in bytes {
-                self.val += *byte as u64;
-            }
-        }
-    }
-
-    struct IntBuildHasher {}
-
-    impl BuildHasher for IntBuildHasher {
-        type Hasher = IntHasher;
-
-        fn build_hasher(&self) -> Self::Hasher {
-            IntHasher { val: 0 }
-        }
-    }
 
     // A type that always returns a hash of zero, to allow both testing hash collision logic and to
     // directly test the contents of the backing structure in a reproducible way
@@ -237,8 +226,7 @@ mod tests {
 
     #[test]
     fn test_insert() {
-        let bh = IntBuildHasher {};
-        let mut set = HashSet::<u32, _, 50>::new_with_hasher(bh);
+        let mut set = HashSet::<u32, 50>::new();
 
         assert_eq!(set.len, 0);
 
@@ -260,8 +248,7 @@ mod tests {
 
     #[test]
     fn test_set_macro() {
-        let bh = IntBuildHasher {};
-        let set: HashSet<u32, _, 20> = set!(bh => 1, 2, 3);
+        let set: HashSet<u32, 20> = set!(1, 2, 3);
 
         assert_eq!(set.len, 3);
         assert!(set.contains(&1));
@@ -275,8 +262,7 @@ mod tests {
 
     #[test]
     fn test_remove() {
-        let bh = IntBuildHasher {};
-        let mut set: HashSet<u32, _, 20> = set!(bh => 1, 2, 3);
+        let mut set: HashSet<u32, 20> = set!(1, 2, 3);
 
         assert_eq!(set.len, 3);
         assert_eq!(set.remove(&4), None);
@@ -301,7 +287,7 @@ mod tests {
     #[test]
     fn test_collisions() {
         let bh = IntCollBuildHasher {};
-        let mut map: HashSet<_, _, 50> = set![bh => ];
+        let mut map: HashSet<_, 50, _> = HashSet::new_with_hasher(bh);
 
         map.insert(1);
         map.insert(2);
