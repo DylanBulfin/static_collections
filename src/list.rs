@@ -65,6 +65,37 @@ impl<T, const N: usize> List<T, N> {
         elem
     }
 
+    pub fn remove_by<F>(&mut self, f: F) -> Option<T>
+    where
+        F: Fn(&T) -> bool,
+    {
+        let mut spot = None;
+
+        for i in 0..self.len {
+            if f(self.arr[i].as_ref().unwrap_or_else(|| {
+                panic!("None at unexpected pos: {} when len is {}", i, self.len)
+            })) {
+                spot = Some(i);
+            }
+        }
+
+        let index = spot?;
+
+        let elem = self.arr[index]
+            .take()
+            .unwrap_or_else(|| panic!("Unexpected None in backing array at index {}", self.len));
+
+        self.len -= 1;
+
+        for i in index..self.len {
+            self.arr[i] = self.arr[i + 1].take();
+        }
+
+        self.arr[self.len] = None;
+
+        Some(elem)
+    }
+
     pub fn iter(&self) -> ListIter<'_, T, N> {
         ListIter {
             base: self,
@@ -304,6 +335,20 @@ mod tests {
         let mut exp_arr = list.arr.clone();
 
         list.remove(2);
+        exp_arr[2] = Some(4);
+        exp_arr[3] = Some(5);
+        exp_arr[4] = None;
+
+        assert_eq!(list.len, 4);
+        assert_eq!(list.arr, exp_arr);
+    }
+
+    #[test]
+    fn test_remove_by() {
+        let mut list: List<u32, 10> = list![1, 2, 3, 4, 5];
+        let mut exp_arr = list.arr.clone();
+
+        list.remove_by(|i| i * i == 9);
         exp_arr[2] = Some(4);
         exp_arr[3] = Some(5);
         exp_arr[4] = None;
