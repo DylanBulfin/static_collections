@@ -49,6 +49,14 @@ where
             HashMapEntry::Deleted => HashMapEntry::Deleted,
         }
     }
+
+    pub fn as_mut_val(&mut self) -> Option<&mut V> {
+        match self {
+            HashMapEntry::Occupied(_, v) => Some(v),
+            HashMapEntry::Empty => None,
+            HashMapEntry::Deleted => None,
+        }
+    }
 }
 
 impl<K, V> From<HashMapEntry<K, V>> for Option<V>
@@ -140,6 +148,12 @@ where
         let spot = self.probe_for_existing_spot(key)?;
 
         self.entries[spot].as_ref().into()
+    }
+
+    pub fn get_mut(&mut self, key: &'_ K) -> Option<&mut V> {
+        let spot = self.probe_for_existing_spot(key)?;
+
+        self.entries[spot].as_mut_val()
     }
 
     fn hash_key(&self, key: &K) -> u64 {
